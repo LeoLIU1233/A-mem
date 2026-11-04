@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+cached_memories_*/
+logs/
+results/*.log

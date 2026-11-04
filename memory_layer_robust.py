@@ -95,17 +95,31 @@ class RobustBaseLLMController(ABC):
 
 
 class RobustOpenAIController(RobustBaseLLMController):
-    def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None):
+    """OpenAI-compatible chat-completions backend.
+
+    ``api_base`` also supports OpenAI-compatible providers such as DeepSeek.
+    Secrets are read from environment variables and never persisted by the
+    evaluation scripts.
+    """
+
+    def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None,
+                 api_base: Optional[str] = None):
         try:
             from openai import OpenAI
         except ImportError:
             raise ImportError("OpenAI package not found. Install it with: pip install openai")
         self.model = model
         if api_key is None:
-            api_key = os.getenv('OPENAI_API_KEY')
+            api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DEEPSEEK_API_KEY')
         if api_key is None:
-            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
-        self.client = OpenAI(api_key=api_key)
+            raise ValueError(
+                "API key not found. Set DEEPSEEK_API_KEY (recommended) or OPENAI_API_KEY."
+            )
+        api_base = api_base or os.getenv('OPENAI_BASE_URL')
+        client_kwargs = {"api_key": api_key}
+        if api_base:
+            client_kwargs["base_url"] = api_base
+        self.client = OpenAI(**client_kwargs)
 
     @retry_llm_call(max_retries=2)
     def get_completion(self, prompt: str, temperature: float = 0.7) -> str:
@@ -252,7 +266,7 @@ class RobustLLMController:
                  sglang_port: int = 30000,
                  check_connection: bool = False):
         if backend == "openai":
-            self.llm = RobustOpenAIController(model, api_key)
+            self.llm = RobustOpenAIController(model, api_key, api_base)
         elif backend == "ollama":
             self.llm = RobustOllamaController(model)
         elif backend == "sglang":
@@ -374,9 +388,13 @@ class RobustAgenticMemorySystem:
                  sglang_host: str = "http://localhost",
                  sglang_port: int = 30000,
                  check_connection: bool = False,
-                 refresh_index: bool = False):
+                 refresh_index: bool = False,
+                 memory_mode: str = "full"):
 
         self.memories: Dict[str, RobustMemoryNote] = {}
+        if memory_mode not in {"full", "link_only", "none"}:
+            raise ValueError("memory_mode must be 'full', 'link_only', or 'none'")
+        self.memory_mode = memory_mode
         # re-embed neighbours as soon as evolution updates them; otherwise their embeddings stay
         # stale until consolidate_memories runs every evo_threshold evolutions (paper behaviour)
         self.refresh_index = refresh_index
@@ -477,13 +495,21 @@ class RobustAgenticMemorySystem:
     # ---- evolution (3 sequential plain-text calls) ----
 
     def process_memory(self, note: RobustMemoryNote) -> tuple:
-        """Process a memory note for evolution using plain-text LLM calls.
+        """Process links and evolution using plain-text LLM calls.
 
         Uses up to 3 sequential calls (conditional):
           1. Evolution decision
           2. Strengthen details (skip if no strengthen)
           3. Update neighbors (skip if no update)
+
+        ``memory_mode`` makes the paper's ablation explicit:
+          * full: generate links and update neighbours (A-MEM).
+          * link_only: generate links but do not update neighbours (w/o ME).
+          * none: skip both link generation and evolution (w/o LG & ME).
         """
+        if self.memory_mode == "none":
+            return False, note
+
         neighbor_memory, indices = self.find_related_memories(note.content, k=5)
 
         if len(indices) == 0:
@@ -532,6 +558,9 @@ class RobustAgenticMemorySystem:
                         FAILURES["invalid_link"] += 1
                 if strengthen["tags"]:
                     note.tags = strengthen["tags"]
+
+            if self.memory_mode == "link_only":
+                return should_strengthen, note
 
             # ---- Call 3: Update neighbors (conditional) ----
             if should_update:

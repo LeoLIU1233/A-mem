@@ -14,6 +14,7 @@ from llm_text_parsers import (
     parse_relevant_parts,
     parse_keywords_response,
 )
+from reproduction_utils import parse_retrieve_k_map, select_qa_indices
 import os
 import json
 import argparse
@@ -33,6 +34,14 @@ import random
 from tqdm import tqdm
 from utils import calculate_metrics, aggregate_metrics, score_prediction
 from datetime import datetime
+
+try:
+    from dotenv import load_dotenv
+    for env_path in (Path(__file__).with_name(".env"), Path(__file__).parents[1] / ".env"):
+        if env_path.exists():
+            load_dotenv(dotenv_path=env_path, override=False)
+except ImportError:
+    pass
 
 # Download required NLTK data
 try:
@@ -56,23 +65,28 @@ class RobustAdvancedMemAgent:
     """Agent using the robust memory system with plain-text LLM calls."""
 
     def __init__(self, model, backend, retrieve_k, temperature_c5,
-                 sglang_host="http://localhost", sglang_port=30000, refresh_index=False):
+                 sglang_host="http://localhost", sglang_port=30000, refresh_index=False,
+                 memory_mode="full", api_base=None, retrieve_k_map=None):
         self.memory_system = RobustAgenticMemorySystem(
             model_name='all-MiniLM-L6-v2',
             llm_backend=backend,
             llm_model=model,
+            api_base=api_base,
             sglang_host=sglang_host,
             sglang_port=sglang_port,
             refresh_index=refresh_index,
+            memory_mode=memory_mode,
         )
         self.retriever_llm = RobustLLMController(
             backend=backend,
             model=model,
             api_key=None,
+            api_base=api_base,
             sglang_host=sglang_host,
             sglang_port=sglang_port,
         )
         self.retrieve_k = retrieve_k
+        self.retrieve_k_map = retrieve_k_map or {}
         self.temperature_c5 = temperature_c5
 
     def add_memory(self, content, time=None):
@@ -113,7 +127,8 @@ Keywords:"""
                         rng: Optional[random.Random] = None) -> tuple:
         """Generate answer for a question — plain text, no JSON schema."""
         keywords = self.generate_query_llm(question)
-        raw_context = self.retrieve_memory(keywords, k=self.retrieve_k)
+        retrieve_k = self.retrieve_k_map.get(category, self.retrieve_k)
+        raw_context = self.retrieve_memory(keywords, k=retrieve_k)
         context = raw_context
 
         assert category in [1, 2, 3, 4, 5]
@@ -207,7 +222,12 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
                      temperature_c5: float = 0.5, retrieve_k: int = 10,
                      sglang_host: str = "http://localhost", sglang_port: int = 30000,
                      legacy_c5_reference: bool = False, seed: int = 42,
-                     refresh_index: bool = False, memory_scope: str = "conversation"):
+                     refresh_index: bool = False, memory_scope: str = "conversation",
+                     memory_mode: str = "full", api_base: Optional[str] = None,
+                     max_turns_per_sample: Optional[int] = None,
+                     per_category: Optional[int] = None,
+                     max_questions: Optional[int] = None,
+                     retrieve_k_map: Optional[Dict[int, int]] = None):
     """Evaluate the robust agent on the LoComo dataset."""
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
     log_filename = f"eval_robust_{model}_{backend}_ratio{ratio}_{memory_scope}_{timestamp}.log"
@@ -237,7 +257,11 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
     error_num = 0
     memories_dir = os.path.join(
         os.path.dirname(__file__),
-        "cached_memories_robust_{}_{}{}".format(backend, model, "_refresh" if refresh_index else ""),
+        "cached_memories_robust_{}_{}_{}_turns{}{}".format(
+            backend, model, memory_mode,
+            max_turns_per_sample or "all",
+            "_refresh" if refresh_index else "",
+        ),
     )
     os.makedirs(memories_dir, exist_ok=True)
     allow_categories = [1, 2, 3, 4, 5]
@@ -246,7 +270,8 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
     def load_or_build(sample_idx, sample):
         """An agent holding this conversation's memory, loaded from the cache or built and cached."""
         agent = RobustAdvancedMemAgent(model, backend, retrieve_k, temperature_c5,
-                                       sglang_host, sglang_port, refresh_index)
+                                       sglang_host, sglang_port, refresh_index,
+                                       memory_mode, api_base, retrieve_k_map)
 
         memory_cache_file = os.path.join(memories_dir, f"memory_cache_sample_{sample_idx}.pkl")
         retriever_cache_file = os.path.join(memories_dir, f"retriever_cache_sample_{sample_idx}.pkl")
@@ -276,11 +301,17 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
         else:
             eval_logger.info(f"No cached memories found for sample {sample_idx}. Creating new memories.")
 
+            turns_built = 0
             for _, turns in sample.conversation.sessions.items():
                 for turn in turns.turns:
+                    if max_turns_per_sample is not None and turns_built >= max_turns_per_sample:
+                        break
                     turn_datatime = turns.date_time
                     conversation_tmp = "Speaker " + turn.speaker + "says : " + turn.text
                     agent.add_memory(conversation_tmp, time=turn_datatime)
+                    turns_built += 1
+                if max_turns_per_sample is not None and turns_built >= max_turns_per_sample:
+                    break
 
             memories_to_cache = agent.memory_system.memories
             with open(memory_cache_file, 'wb') as f:
@@ -302,7 +333,16 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
 
         eval_logger.info(f"Processing sample {sample_idx + 1}/{len(samples)}")
 
-        for qa_idx, qa in enumerate(sample.qa):
+        remaining_questions = None
+        if max_questions is not None:
+            remaining_questions = max(0, max_questions - total_questions)
+        for qa_idx in select_qa_indices(
+            sample.qa,
+            per_category=per_category,
+            max_questions=remaining_questions,
+            allow_categories=allow_categories,
+        ):
+            qa = sample.qa[qa_idx]
             if int(qa.category) in allow_categories:
                 total_questions += 1
                 category_counts[qa.category] += 1
@@ -358,6 +398,14 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
         "legacy_c5_reference": legacy_c5_reference,
         "refresh_index": refresh_index,
         "memory_scope": memory_scope,
+        "memory_mode": memory_mode,
+        "api_base": api_base,
+        "max_turns_per_sample": max_turns_per_sample,
+        "per_category": per_category,
+        "max_questions": max_questions,
+        "retrieve_k_map": {
+            str(category): k for category, k in (retrieve_k_map or {}).items()
+        },
         "pooled_notes": len(pooled_agent.memory_system.memories) if memory_scope == "pooled" else None,
         "cached_samples": cached_samples,
         "stale_cache_samples": stale_cache_samples,
@@ -378,7 +426,8 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
     eval_logger.info(f"Total questions evaluated: {total_questions}")
     eval_logger.info("Category Distribution:")
     for category, count in sorted(category_counts.items()):
-        eval_logger.info(f"Category {category}: {count} questions ({count/total_questions*100:.1f}%)")
+        percentage = count / total_questions * 100 if total_questions else 0.0
+        eval_logger.info(f"Category {category}: {count} questions ({percentage:.1f}%)")
 
     eval_logger.info("Aggregate Metrics:")
     for split_name, metrics in aggregate_results.items():
@@ -427,10 +476,29 @@ def main():
                              "(LoCoMo's protocol, as in the paper). pooled: from one memory holding all "
                              "evaluated conversations, so retrieval must also reject other conversations' "
                              "notes (uses the same memory caches)")
+    parser.add_argument("--memory_mode", choices=["full", "link_only", "none"], default="full",
+                        help="full: A-MEM; link_only: w/o memory evolution; none: w/o link generation and "
+                             "memory evolution")
+    parser.add_argument("--api_base", type=str, default=None,
+                        help="OpenAI-compatible base URL. For DeepSeek use https://api.deepseek.com")
+    parser.add_argument("--max_turns_per_sample", type=int, default=None,
+                        help="Build each memory from at most this many turns (for a quick subset)")
+    parser.add_argument("--per_category", type=int, default=None,
+                        help="Evaluate at most this many questions from each category per conversation")
+    parser.add_argument("--max_questions", type=int, default=None,
+                        help="Global cap on evaluated questions")
+    parser.add_argument("--retrieve_k_map", type=str, default=None,
+                        help="Optional category-specific retrieval k, e.g. "
+                             "1:40,2:40,3:50,4:50,5:40")
     args = parser.parse_args()
 
     if args.ratio <= 0.0 or args.ratio > 1.0:
         raise ValueError("Ratio must be between 0.0 and 1.0")
+    for name in ("max_turns_per_sample", "per_category", "max_questions"):
+        value = getattr(args, name)
+        if value is not None and value <= 0:
+            raise ValueError(f"--{name} must be positive")
+    retrieve_k_map = parse_retrieve_k_map(args.retrieve_k_map)
 
     dataset_path = os.path.join(os.path.dirname(__file__), args.dataset)
     output_path = os.path.join(os.path.dirname(__file__), args.output) if args.output else None
@@ -439,7 +507,9 @@ def main():
         dataset_path, args.model, output_path, args.ratio,
         args.backend, args.temperature_c5, args.retrieve_k,
         args.sglang_host, args.sglang_port, args.legacy_c5_reference, args.seed,
-        args.refresh_index, args.memory_scope,
+        args.refresh_index, args.memory_scope, args.memory_mode, args.api_base,
+        args.max_turns_per_sample, args.per_category, args.max_questions,
+        retrieve_k_map,
     )
 
 
