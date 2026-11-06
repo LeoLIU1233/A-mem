@@ -1,0 +1,14 @@
+bert-score==0.3.13
+litellm==1.108.0
+nltk==3.10.4
+numpy==2.3.4
+ollama==0.6.3
+openai==3.42.0
+pytest==9.2.0
+python-dotenv==1.2.4
+python-docx==1.2.0
+rouge-score==0.1.2
+scikit-learn==1.7.2
+sentence-transformers==6.2.0
+torch==2.15.0
+transformers==5.22.1

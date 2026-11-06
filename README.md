@@ -2,6 +2,31 @@
 
 A novel agentic memory system for LLM agents that can dynamically organize memories in an agentic way.
 
+## FTEC5660 reproduction package
+
+This fork runs a controlled reproduction and ablation of A-MEM on LoCoMo. The
+main target is the paper's `A-MEM` versus `w/o ME` comparison, where ME means
+Memory Evolution.
+
+The reproduction uses the official benchmark code at commit
+`f9a173dec325d84fcc97e7828775c7b241c33466` and adds explicit `full`,
+`link_only`, and `none` memory modes, an OpenAI-compatible DeepSeek
+configuration, deterministic category-balanced question selection, isolated
+caches, category-specific retrieval `k`, tests, and a subset runner.
+
+Start with:
+
+- `REPRODUCTION.md` for setup, commands, and limitations;
+- `REPORT.md` for the written reproduction report;
+- `PRESENTATION_OUTLINE.md` for a 12-minute recording structure;
+- `results/summary.md` for the measured results.
+
+The completed three-seed subset has 25 questions per run. Mean overall F1 is
+41.76 for full A-MEM and 38.25 for link-only A-MEM, a gain of 3.51 percentage
+points. Multi-Hop shows the largest mean gain at 15.56 points. Temporal and
+Single-Hop do not show a consistent gain. This is partial behavioral
+reproduction, not an exact numerical reproduction of the paper.
+
 > **Note:** This repository is specifically designed to reproduce the results presented in our paper. If you want to use the A-Mem system in building your agents, please refer to our official implementation at: [A-mem-sys](https://github.com/WujiangXu/A-mem-sys)
 
 For more details, please refer to our paper: [A-Mem: Agentic Memory for LLM Agents](https://arxiv.org/pdf/2502.12110)
