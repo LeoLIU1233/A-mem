@@ -126,7 +126,6 @@ def slide_cover(pdf):
         14,
         color="#D9E7EF",
     )
-    text(pdf, MARGIN, 100, "6 November 2026", 12, color="#B9D8E6")
     pdf.showPage()
 
 

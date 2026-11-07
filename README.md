@@ -19,6 +19,7 @@ Start with:
 - `REPRODUCTION.md` for setup, commands, and limitations;
 - `REPORT.md` for the written reproduction report;
 - `PRESENTATION_OUTLINE.md` for a short recording structure;
+- `PRESENTATION_SCRIPT.md` for the complete English speaker script;
 - `output/pdf/A-MEM_Reproduction_Slides.pdf` for the five-slide PDF deck;
 - `results/summary.md` for the measured results.
 
