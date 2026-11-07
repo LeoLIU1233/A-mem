@@ -46,7 +46,7 @@ Lead with the overall result:
 Show the paper-versus-local values for Multi-Hop and Temporal. State the clean
 conclusion: the Multi-Hop direction reproduced, while Temporal did not.
 
-## Slide 5 What worked and what did not
+## Slide 5 Key lessons and next steps
 
 Summarize:
 
@@ -55,6 +55,13 @@ Summarize:
 - Multi-Hop improved by 15.56 F1 points;
 - Temporal changed by -1.03 and Single-Hop by -11.43;
 - seed variation is large.
+
+State the key lesson: match the model, data version, scoring convention, and
+retrieval `k` before comparing scores.
+
+Recommend a future step: start with a small end-to-end test, verify failures and
+cache state, then increase the question count, conversation count, and number
+of seeds.
 
 Close with the limitation: DeepSeek, `k=10`, one conversation, and 25
 questions. The result is a partial behavioral reproduction, not an exact

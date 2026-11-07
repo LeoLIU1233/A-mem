@@ -281,7 +281,7 @@ def slide_results(pdf):
 
 
 def slide_takeaway(pdf):
-    page_base(pdf, 5, "04  What worked and what did not")
+    page_base(pdf, 5, "04  Key lessons and next steps")
     wrapped(
         pdf,
         MARGIN,
@@ -324,7 +324,7 @@ def slide_takeaway(pdf):
         pdf.setLineWidth(3)
         pdf.line(x, 328, x + 350, 328)
         for item_index, item in enumerate(items):
-            y = 292 - item_index * 43
+            y = 292 - item_index * 39
             pdf.setFillColorRGB(
                 *(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5))
             )
@@ -332,22 +332,34 @@ def slide_takeaway(pdf):
             wrapped(pdf, x + 22, y, 330, item, 16, 21, INK)
 
     pdf.setFillColorRGB(0.96, 0.97, 0.98)
-    pdf.roundRect(MARGIN, 76, WIDTH - 2 * MARGIN, 58, 7, fill=1, stroke=0)
-    text(pdf, MARGIN + 18, 109, "Limits", 12, bold=True, color=TEAL)
+    pdf.roundRect(MARGIN, 56, WIDTH - 2 * MARGIN, 88, 7, fill=1, stroke=0)
+    label_x = MARGIN + 18
+    value_x = MARGIN + 122
+    text(pdf, label_x, 121, "KEY LESSON", 9, bold=True, color=TEAL)
     text(
         pdf,
-        MARGIN + 84,
-        109,
-        "DeepSeek, k=10, one conversation, 25 questions",
-        15,
+        value_x,
+        121,
+        "Match model, data version, scoring, and retrieval k before comparing scores.",
+        13,
         color=INK,
     )
+    text(pdf, label_x, 98, "NEXT STEP", 9, bold=True, color=TEAL)
     text(
         pdf,
-        MARGIN + 18,
-        88,
-        "Conclusion: partial behavioral reproduction, not an exact numerical replication.",
-        14,
+        value_x,
+        98,
+        "Start with a small test, verify failures and caches, then expand questions and seeds.",
+        13,
+        color=INK,
+    )
+    text(pdf, label_x, 75, "CONCLUSION", 9, bold=True, color=TEAL)
+    text(
+        pdf,
+        value_x,
+        75,
+        "Partial behavioral reproduction, not an exact numerical replication.",
+        13,
         bold=True,
         color=NAVY,
     )
