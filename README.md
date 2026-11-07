@@ -18,7 +18,8 @@ Start with:
 
 - `REPRODUCTION.md` for setup, commands, and limitations;
 - `REPORT.md` for the written reproduction report;
-- `PRESENTATION_OUTLINE.md` for a 12-minute recording structure;
+- `PRESENTATION_OUTLINE.md` for a short recording structure;
+- `output/pdf/A-MEM_Reproduction_Slides.pdf` for the five-slide PDF deck;
 - `results/summary.md` for the measured results.
 
 The completed three-seed subset has 25 questions per run. Mean overall F1 is
